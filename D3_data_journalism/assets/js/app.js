@@ -1,20 +1,50 @@
-// --------------------CHART SIZE PARAMETERS--------------------
+//--------------------------------------------------------------
+// CHART SIZE PARAMETERS
+//--------------------------------------------------------------
 // svg container size
-var height = 600;
-var width = 1000;
+var height = 800;
+var width = 1200;
 
 // set margins
 var margin = {
-   top: 50,
-   right: 50,
-   bottom: 50,
-   left: 50
+   top: 120,
+   right: 120,
+   bottom: 120,
+   left: 120
 };
 
 // set chart size inside svg area with margins all sides
 var chartHeight = height - margin.top - margin.bottom
 var chartWidth = width - margin.left - margin.right
-// -------------------------------------------------------------
+//--------------------------------------------------------------
+
+
+//--------------------------------------------------------------
+// INITIAL VARIABLES/PARAMS
+//--------------------------------------------------------------
+var xAxisCount = 1
+var yAxisCount = 1
+//--------------------------------------------------------------
+
+
+//--------------------------------------------------------------
+// ALL FUNCTIONS
+//      createSvg() - add svg to page
+//      createChart() - add chart under svg
+//      xAxisScale() - linear scale from selected data
+//      yAxisScale() - linear scale from selected data
+//      scaleXAxis() - apply xScale to d3 bottom axis
+//      scaleYAxis() - apply yScale to d3 left axis
+//      insertAxes() - append axes to chart
+//      scatterPlot() - append circles with labels to chart
+//      toolTip() - append tooltips to chart with mouse events
+//      updateScatterX() - transition circles and axis on clicking axis label event
+//      updateScatterY() - transition circles and axis on clicking axis label event
+//      xLabelsGroup() - create group to hold x axis labels
+//      yLabelsGroup() - create group to hold y axis labels
+//      xLabel() - append x axis labels
+//      yLabel() - append y axis labels
+//--------------------------------------------------------------
 
 // create svg area
 function createSvg() {
@@ -31,146 +61,335 @@ function createChart(svg) {
    return chartGroup
 };
 
-// create array of objects with data to pass into scatter plot
-function combineData(xData, yData, abbr) {
-   const combinedData = xData.map((x, i) => ({ x, y: yData[i], abbr: abbr[i]}));
-   console.log("combined data: ", combinedData)
-   return combinedData
-};
-
-// set axes scale with numerical data to both axes
-function numNumAxesScale (xData, yData) {
-   var yScale = d3.scaleLinear()
-      .domain([d3.min(yData) * 0.8, d3.max(yData) * 1.1])
-      .range([chartHeight, 0]);
-
+// x axis linear scale 
+function xAxisScale(data, chosenX) {
    var xScale = d3.scaleLinear()
-      .domain([d3.min(xData) * 0.8, d3.max(xData) * 1.1])
+      .domain([d3.min(data, d => d[chosenX]) * 0.8, d3.max(data, d => d[chosenX]) * 1.1])
       .range([0, chartWidth]);
 
-   return axesScale ={
-      "yScale": yScale,
-      "xScale": xScale
-   }    
-
+   return xScale  
 };
 
-// apply axes scale to x and y axes  
-function scaleToAxes(axesScale) {
+// y axis linear scale
+function yAxisScale(data, chosenY) {
+   var yScale = d3.scaleLinear()
+      .domain([d3.min(data, d => d[chosenY]) * 0.8, d3.max(data, d => d[chosenY]) * 1.1])
+      .range([chartHeight, 0]);
 
-   var yAxis = d3.axisLeft(axesScale.yScale);
-   var xAxis = d3.axisBottom(axesScale.xScale);
+   return yScale
+};
 
-   return axes = {
-      "yAxis": yAxis,
-      "xAxis": xAxis
-   };
+// apply scale to x axis
+function scaleXAxis(xScale) {
+   var bottomAxis = d3.axisBottom(xScale)
+   
+   return bottomAxis
+};
+
+// apply scale to y axis
+function scaleYAxis(yScale) {
+   var leftAxis = d3.axisLeft(yScale)
+   
+   return leftAxis
 };
 
 // append axes to chart
-function insertAxes(axes, chartGroup) {
+function insertAxes(bottomAxis, leftAxis, chartGroup) {
    // x axis to bottom of chart
-   chartGroup.append("g")
+   var xAxis = chartGroup.append("g")
       .attr("transform", `translate(0, ${chartHeight})`)
-      .call(axes.xAxis);
+      .call(bottomAxis);
 
    // y axis
-   chartGroup.append("g")
-      .call(axes.yAxis);
+   var yAxis = chartGroup.append("g")
+      .call(leftAxis);
+
+   var axes = {
+      x: xAxis,
+      y: yAxis
+   };
+
+   return axes
 };
 
 // append circles with labels to chart in the correct position
-function scatterCircles(combinedData, chartGroup, axesScale) {
+function scatterPlot(data, chosenX, chosenY, chartGroup, xScale, yScale) {
    //create a group for every point that will be plotted. A circle and text will be appended under the group
    var scatterPoints = chartGroup.selectAll("g points")
-      .data(combinedData)
+      .data(data)
       .enter()
       .append("g")
 
    // place a circle under each new group in the correct location
-   var radius = 8
+   var radius = 12
    var scatterCircles =scatterPoints.append("circle") 
       .attr("r", `${radius}`)
-      .attr("cx", d => axesScale.xScale(d.x))
-      .attr("cy", d => axesScale.yScale(d.y))
+      .attr("cx", d => xScale(d[chosenX]))
+      .attr("cy", d => yScale(d[chosenY]))
       .classed("stateCircle", true)
-
    // place text at same spot with some adjustment to make sure they are middle of circles
-   var scatterLabels =scatterPoints.append("text")
+   var scatterLabels = scatterPoints.append("text")
       .text(d => `${d.abbr}`)
-      .attr("x", d => axesScale.xScale(d.x))
-      .attr("y", d => axesScale.yScale(d.y) + (radius/4))
+      .attr("x", d => xScale(d[chosenX]))
+      .attr("y", d => yScale(d[chosenY]) + (radius/4))
       .attr("font-size", `${radius-2}`)
       .classed("stateText", true);
+
+
+   scatter={
+      circles: scatterCircles,
+      labels: scatterLabels,
+      r: radius
+   };
+
+   return scatter
      
 };
 
-function axesLabels(chartGroup) {
-   var labelsGroup = chartGroup.append("g")
-      .attr("transform", `translate(${chartWidth/2},${chartHeight+20})`)
+// append tool tips to chart
+function toolTip(scatter, chosenX, chosenY) {
+   var xTxt;
    
-   // append x labels
-   var incomeLabel = labelsGroup.append("text")
-      .attr("x", 0)
-      .attr("y", 20)
-      .classed("aText", true)
-      .text("income ($)")
+   switch (chosenX) {
+      case "poverty":
+         xTxt = "%";
+         break;
+      case "age":
+         xTxt = " (Years Median)";
+         break;
+      case "income":
+         xTxt = " ($ Median)"
+         break;
+      default:
+         console.log("switch error")
+   };
+   
+   var toolTip = d3.tip()
+      .attr("class", "d3-tip")
+      .offset([80, -60])
+      .html(function(d) {
+         return (`${d.state}<br>${chosenX}: ${d[chosenY]}${xTxt}<br>${chosenY}: ${d[chosenY]}%`)
+      })
+   scatter.circles.call(toolTip)
+   scatter.circles.on("mouseover", toolTip.show)
+   scatter.circles.on("mouseout", toolTip.hide)
+   scatter.labels.call(toolTip)
+   scatter.labels.on("mouseover", toolTip.show)
+   scatter.labels.on("mouseout", toolTip.hide)
 
+   return toolTip
+
+};
+
+// update scatter plot circles and x axis on axis label click
+function updateScatterX(scatter, xScale, chosenX, bottomAxis, axes, xLabelGroup, data) {
+   // move circles to new coords
+   scatter.circles.transition()
+      .duration(1000)
+      .attr("cx", d => xScale(d[chosenX]))
+   // move text to new coords
+   scatter.labels.transition()
+      .duration(1000)
+      .attr("x", d => xScale(d[chosenX]))
+   // redraw x axis
+   axes.x.transition()
+      .duration(1000)
+      .call(bottomAxis)
+   // change axis label text to indicate which is selected
+   xLabelGroup.selectAll("text")
+      .classed("active", false)
+      .classed("inactive", true)
+   xLabelGroup.selectAll(`text[value = ${chosenX}]`)
+      .classed("inactive", false)
+      .classed("active", true)
+            
+};
+
+// update scatter plot circles and y axis on axis label click
+function updateScatterY(scatter, yScale, chosenY, leftAxis, axes, yLabelGroup, data) {
+   scatter.circles.transition()
+      .duration(1000)
+      .attr("cy", d => yScale(d[chosenY]))
+   scatter.labels.transition()
+      .duration(1000)
+      .attr("y", d => yScale(d[chosenY]) + (scatter.r/4))
+   axes.y.transition()
+      .duration(1000)
+      .call(leftAxis)
+   yLabelGroup.selectAll("text")
+      .classed("active", false)
+      .classed("inactive", true)
+   yLabelGroup.selectAll(`text[value = ${chosenY}]`)
+      .classed("inactive", false)
+      .classed("active", true)
+};
+
+// increase counter. Not necessary
+function increment(n) {
+   n++;
+   return n;
+};
+
+// group to hold x labels
+function xLabelGroup(chartGroup) {
+   var xLabelsGroup = chartGroup.append("g")
+      .attr("transform", `translate(${chartWidth/2},${chartHeight+20})`)
+      return xLabelsGroup
+};
+
+// group to hold y labels
+function yLabelGroup(chartGroup) {
+   var yLabelsGroup = chartGroup.append("g")
+      .attr("transform", `translate(${chartWidth/2},${chartHeight+20})`)
+      return yLabelsGroup
+};
+
+// append x labels
+function xLabel(xLabelGroup, labelText, value) {
+   
+   // append x label
+   var xLabel = xLabelGroup.append("text")
+      .attr("x", 0)
+      .attr("y",xAxisCount * 20)
+      .attr("value", `${value}`)
+      .text(`${labelText}`)
+   if (xAxisCount == 1) {
+      xLabel.classed("active", true)
+   } else {
+      xLabel.classed("inactive",true)
+   };
+
+   xAxisCount = increment(xAxisCount)
+};
+
+// append y labels
+function yLabel(yLabelGroup, labelText, value) {
    // append y label
-   var obesityLabel = labelsGroup.append("text")
+   var yLabel = yLabelGroup.append("text")
       .attr("transform", "rotate(-90)")
       .attr("x", chartHeight/2) 
-      .attr("y", -chartWidth/2 - margin.left)
+      .attr("y", -chartWidth/2 - 50 - (yAxisCount * 20))
       .attr("dy", "1em")
-      .classed("aText", true)
-      .text("rate of obesity (%)")
+      .attr("value", `${value}`)
+      .text(`${labelText}`)
+      if (yAxisCount == 1) {
+         yLabel.classed("active", true)
+      } else {
+         yLabel.classed("inactive",true)
+      };
+   
+      yAxisCount = increment(yAxisCount)
 };
-// -------------------- CREATE SCATTERPLOT --------------------
-function createScatterplot(healthData, obesity, income, abbr) {
-   // insert svg area to hold chart to page
+
+
+//--------------------------------------------------------------
+// CREATE SCATTERPLOT 
+//--------------------------------------------------------------
+function createScatterplot(healthData) {
+   //------------------------------
+   //CHART AREA ON PAGE
+   //------------------------------
+   // create svg 
    var svg = createSvg();
    // append chart group to svg area
    var chartGroup = createChart(svg);
-   // choose x values, y values and labels (state abbrevs)
-   var incomeObesity = combineData(income, obesity, abbr)
-   // create scale functions
-   var axesScale = numNumAxesScale(income, obesity);
-   // create axis functions
-   var axes = scaleToAxes(axesScale);
-   // append axes to chart
-   insertAxes(axes, chartGroup);
-   // append scatter plot circles to chart
-   scatterCircles(incomeObesity, chartGroup, axesScale)
-   // append labels to axes
-   axesLabels(chartGroup)
+
+   //------------------------------
+   //AXES LABELS
+   //------------------------------
+   // insert labels group under chart group
+   xLabelGroup = xLabelGroup(chartGroup);
+   yLabelGroup = yLabelGroup(chartGroup);
+   
+   // choose text to append for each axis label
+   const xPoverty = "In Poverty (%)";
+   const xAge = "Age (Median)";
+   const xIncome = "Household Income (Median)";
+   const yHealthcare = "Lacks Healthcare (%)";
+   const ySmokes = "Smokes (%)";
+   const yObesity = "Obese (%)";
+
+   // choose value for each axis label. to be used with event listener
+   const vPoverty = "poverty";
+   const vAge = "age";
+   const vIncome = "income";
+   const vHealthcare = "healthcare";
+   const vSmokes = "smokes";
+   const vObesity = "obesity";
+
+   // pass text and values into functions to append axes labels to svg
+   xLabel(xLabelGroup, xPoverty, vPoverty);
+   xLabel(xLabelGroup, xAge, vAge);
+   xLabel(xLabelGroup, xIncome, vIncome);
+   yLabel(yLabelGroup, yHealthcare, vHealthcare);
+   yLabel(yLabelGroup, ySmokes, vSmokes);
+   yLabel(yLabelGroup, yObesity, vObesity);
+
+
+   //------------------------------
+   // INIT SCATTERPLOT ON DEFAULT AXES
+   //------------------------------
+   var chosenX = vPoverty;
+   var chosenY = vHealthcare;
+
+   var xScale = xAxisScale(healthData, chosenX);
+   var yScale = yAxisScale(healthData, chosenY);
+
+   var bottomAxis = scaleXAxis(xScale);
+   var leftAxis = scaleYAxis(yScale);
+
+   var axes = insertAxes(bottomAxis, leftAxis, chartGroup);
+
+   var scatter = scatterPlot(healthData, chosenX, chosenY, chartGroup, xScale, yScale);
+   toolTip(scatter, chosenX, chosenY) 
+   
+   //------------------------------
+   //EVENT LISTENERS ON X AND Y AXES LABELS
+   //------------------------------
+   
+   xLabelGroup.selectAll("text")
+      .on("click", function() {
+         // get value of selected axis
+         var value = d3.select(this).attr("value"); 
+         if (value !== chosenX) {
+            chosenX = value;
+            xScale = xAxisScale(healthData, chosenX)
+            bottomAxis = scaleXAxis(xScale)
+            updateScatterX(scatter, xScale, chosenX, bottomAxis , axes, xLabelGroup, healthData)
+            toolTip(scatter, chosenX, chosenY)
+      }
+   });
+
+   yLabelGroup.selectAll("text")
+      .on("click", function() {
+         // get value of selected axis
+         var value = d3.select(this).attr("value"); 
+         if (value !== chosenY) {
+            chosenY = value;
+            yScale = yAxisScale(healthData, chosenY)
+            leftAxis = scaleYAxis(yScale)
+            updateScatterY(scatter, yScale, chosenY, leftAxis, axes, yLabelGroup, healthData)
+            toolTip(scatter, chosenX, chosenY)
+      }
+   });
 };
 // ------------------------------------------------------------
 
-// read data
+
+// ------------------------------------------------------------
+// READ IN CSV DATA, CLEAN DATA, PASS DATA INTO SCATTERPLOT FUNC
+// ------------------------------------------------------------
 const dataPath = "assets/data/data.csv";
 d3.csv(dataPath).then(healthData => {
    healthData.forEach(row => {
       row.poverty = +row.poverty
       row.age = +row.age
       row.income = +row.income
+      row.healthcare = +row.healthcare
       row.obesity = +row.obesity
-      row.smokers = +row.smokers
+      row.smokes = +row.smokes
    })
-   const states = healthData.map(column => column.state);
-   const stateAbbr = healthData.map(column => column.abbr);
-   const poverty = healthData.map(column => column.poverty);
-   const age = healthData.map(column => column.age);
-   const income = healthData.map(column => column.income);
-   const obesity = healthData.map(column => column.obesity);
-   const smokers = healthData.map(column => column.smokes);
-   console.log("states: ", states);
-   console.log("abbrv: ", stateAbbr);
-   console.log("poverty: ", poverty);
-   console.log("age: ", age);
-   console.log("income: ", income);
-   console.log("obesity: ", obesity);
-   console.log("smokers: ", smokers);
    console.log("health data: ", healthData)
 
-   createScatterplot(healthData, obesity, income, stateAbbr);
+   createScatterplot(healthData);
 });
